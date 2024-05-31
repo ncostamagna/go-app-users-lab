@@ -1,0 +1,15 @@
+version: "3.5"
+services:
+  go-app-users-lab:
+    platform: linux/amd64
+    container_name: go-app-users-lab
+    build: 
+      context: ./.dockers/mysql
+      dockerfile: Dockerfile
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: go_app_users_lab
+    ports:
+      - "3326:3306"
+    volumes:
+      - ./.dockers/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql

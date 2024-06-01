@@ -10,8 +10,8 @@ import (
 	"github.com/go-kit/kit/endpoint"
 	httptransport "github.com/go-kit/kit/transport/http"
 	"github.com/gorilla/mux"
-	"github.com/ncostamagna/go-http-utils/response"
 	"github.com/ncostamagna/go-app-users-lab/internal/user"
+	"github.com/ncostamagna/go-http-utils/response"
 )
 
 func NewUserHTTPServer(ctx context.Context, endpoints user.Endpoints) http.Handler {
@@ -34,6 +34,12 @@ func NewUserHTTPServer(ctx context.Context, endpoints user.Endpoints) http.Handl
 		encodeResponse,
 		opts...,
 	)).Methods("GET")
+
+	r.Handle("/users/login", httptransport.NewServer(
+		endpoint.Endpoint(endpoints.Login),
+		decodeLoginUser, encodeResponse,
+		opts...,
+	)).Methods("POST")
 
 	r.Handle("/users/{id}", httptransport.NewServer(
 		endpoint.Endpoint(endpoints.Get),
@@ -62,6 +68,16 @@ func NewUserHTTPServer(ctx context.Context, endpoints user.Endpoints) http.Handl
 func decodeCreateUser(_ context.Context, r *http.Request) (interface{}, error) {
 
 	var req user.CreateReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, response.BadRequest(fmt.Sprintf("invalid request format: '%v'", err.Error()))
+	}
+
+	return req, nil
+}
+
+func decodeLoginUser(_ context.Context, r *http.Request) (interface{}, error) {
+
+	var req user.LoginReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, response.BadRequest(fmt.Sprintf("invalid request format: '%v'", err.Error()))
 	}

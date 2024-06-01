@@ -4,19 +4,22 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ncostamagna/go-http-utils/response"
 	"github.com/ncostamagna/go-http-utils/meta"
+	"github.com/ncostamagna/go-http-utils/response"
 )
 
 type (
 	Controller func(ctx context.Context, request interface{}) (interface{}, error)
 
 	Endpoints struct {
-		Create Controller
-		Get    Controller
-		GetAll Controller
-		Update Controller
-		Delete Controller
+		Create     Controller
+		Login      Controller
+		TwoFa      Controller
+		LoginTwoFa Controller
+		Get        Controller
+		GetAll     Controller
+		Update     Controller
+		Delete     Controller
 	}
 
 	CreateReq struct {
@@ -24,6 +27,13 @@ type (
 		LastName  string `json:"last_name"`
 		Email     string `json:"email"`
 		Phone     string `json:"phone"`
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+	}
+
+	LoginReq struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
 
 	GetReq struct {
@@ -65,6 +75,7 @@ func MakeEndpoints(s Service, config Config) Endpoints {
 
 	return Endpoints{
 		Create: makeCreateEndpoint(s),
+		Login:  makeLogin(s),
 		Get:    makeGetEndpoint(s),
 		GetAll: makeGetAllEndpoint(s, config),
 		Update: makeUpdateEndpoint(s),
@@ -86,12 +97,34 @@ func makeCreateEndpoint(s Service) Controller {
 			return nil, response.BadRequest(ErrLastNameRequired.Error())
 		}
 
-		user, err := s.Create(ctx, req.FirstName, req.LastName, req.Email, req.Phone)
+		if req.Username == "" {
+			return nil, response.BadRequest(ErrUsernameRequired.Error())
+		}
+
+		if req.Password == "" {
+			return nil, response.BadRequest(ErrPasswordRequired.Error())
+		}
+
+		user, err := s.Create(ctx, req.FirstName, req.LastName, req.Email, req.Phone, req.Username, req.Password)
 		if err != nil {
 			return nil, response.InternalServerError(err.Error())
 		}
 
 		return response.Created("success", user, nil), nil
+	}
+}
+
+func makeLogin(s Service) Controller {
+	return func(ctx context.Context, request interface{}) (interface{}, error) {
+
+		req := request.(LoginReq)
+
+		user, err := s.Login(ctx, req.Username, req.Password)
+		if err != nil {
+			return nil, response.InternalServerError(err.Error())
+		}
+
+		return response.OK("success", user, nil), nil
 	}
 }
 

@@ -122,17 +122,17 @@ func (repo *repo) Update(ctx context.Context, id string, firstName *string, last
 func (repo *repo) Count(ctx context.Context, filters Filters) (int, error) {
 
 	var count int64
- 
-    db := repo.db.Model(&domain.User{})
-    db = applyFilters(db, filters)
- 
-    if err := db.Count(&count).Error; err != nil {
-        return 0, err
-    }
- 
-    repo.log.Println("Numero de todos los registros", count)
-    return int(count), nil
-	
+
+	db := repo.db.Model(&domain.User{})
+	db = applyFilters(db, filters)
+
+	if err := db.Count(&count).Error; err != nil {
+		return 0, err
+	}
+
+	repo.log.Println("Numero de todos los registros", count)
+	return int(count), nil
+
 }
 
 func applyFilters(tx *gorm.DB, filters Filters) *gorm.DB {

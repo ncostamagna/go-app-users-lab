@@ -7,6 +7,8 @@ import (
 
 var ErrFirstNameRequired = errors.New("first name is required")
 var ErrLastNameRequired = errors.New("last name is required")
+var ErrUsernameRequired = errors.New("username is required")
+var ErrPasswordRequired = errors.New("password is required")
 
 type ErrNotFound struct {
 	UserID string

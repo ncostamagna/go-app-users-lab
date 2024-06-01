@@ -3,15 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/joho/godotenv"
+	"github.com/ncostamagna/axul_auth/auth"
+	"github.com/ncostamagna/go-app-users-lab/internal/user"
+	"github.com/ncostamagna/go-app-users-lab/pkg/bootstrap"
+	"github.com/ncostamagna/go-app-users-lab/pkg/handler"
 	"log"
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/joho/godotenv"
-	"github.com/ncostamagna/go-app-users-lab/internal/user"
-	"github.com/ncostamagna/go-app-users-lab/pkg/bootstrap"
-	"github.com/ncostamagna/go-app-users-lab/pkg/handler"
 )
 
 func main() {
@@ -31,7 +31,12 @@ func main() {
 
 	ctx := context.Background()
 	userRepo := user.NewRepo(l, db)
-	userSrv := user.NewService(l, userRepo)
+	a, err := auth.New("12312312")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(-1)
+	}
+	userSrv := user.NewService(l, a, userRepo)
 	h := handler.NewUserHTTPServer(ctx, user.MakeEndpoints(userSrv, user.Config{LimPageDef: pagLimDef}))
 
 	port := os.Getenv("PORT")

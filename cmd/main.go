@@ -8,6 +8,7 @@ import (
 	"github.com/ncostamagna/go-app-users-lab/internal/user"
 	"github.com/ncostamagna/go-app-users-lab/pkg/bootstrap"
 	"github.com/ncostamagna/go-app-users-lab/pkg/handler"
+	"github.com/twilio/twilio-go"
 	"log"
 	"net/http"
 	"os"
@@ -36,7 +37,7 @@ func main() {
 		fmt.Println(err)
 		os.Exit(-1)
 	}
-	userSrv := user.NewService(l, a, userRepo)
+	userSrv := user.NewService(l, a, twilio.NewRestClient(), userRepo)
 	h := handler.NewUserHTTPServer(ctx, user.MakeEndpoints(userSrv, user.Config{LimPageDef: pagLimDef}))
 
 	port := os.Getenv("PORT")

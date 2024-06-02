@@ -41,6 +41,18 @@ func NewUserHTTPServer(ctx context.Context, endpoints user.Endpoints) http.Handl
 		opts...,
 	)).Methods("POST")
 
+	r.Handle("/users/login/2fa", httptransport.NewServer(
+		endpoint.Endpoint(endpoints.Login2FA),
+		decodeLogin2FAUser, encodeResponse,
+		opts...,
+	)).Methods("POST")
+
+	r.Handle("/users/2fa", httptransport.NewServer(
+		endpoint.Endpoint(endpoints.Create2FA),
+		decodeCreate2FAUser, encodeResponse,
+		opts...,
+	)).Methods("POST")
+
 	r.Handle("/users/{id}", httptransport.NewServer(
 		endpoint.Endpoint(endpoints.Get),
 		decodeGetUser,
@@ -81,6 +93,24 @@ func decodeLoginUser(_ context.Context, r *http.Request) (interface{}, error) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, response.BadRequest(fmt.Sprintf("invalid request format: '%v'", err.Error()))
 	}
+
+	return req, nil
+}
+
+func decodeCreate2FAUser(_ context.Context, r *http.Request) (interface{}, error) {
+
+	return user.Create2FAReq{
+		Token: r.Header.Get("Authorization"),
+	}, nil
+}
+
+func decodeLogin2FAUser(_ context.Context, r *http.Request) (interface{}, error) {
+
+	var req user.Login2FAReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, response.BadRequest(fmt.Sprintf("invalid request format: '%v'", err.Error()))
+	}
+	req.Token = r.Header.Get("Authorization")
 
 	return req, nil
 }

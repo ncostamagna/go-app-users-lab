@@ -15,7 +15,7 @@ type Repository interface {
 	GetAll(ctx context.Context, filters Filters, offset, limit int) ([]domain.User, error)
 	Get(ctx context.Context, id string) (*domain.User, error)
 	Delete(ctx context.Context, id string) error
-	Update(ctx context.Context, id string, firstName *string, lastName *string, email *string, phone *string) error
+	Update(ctx context.Context, id string, firstName, lastName, email, phone, twoFStatus, twoFCode *string, twoFActive *bool) error
 	Count(ctx context.Context, filters Filters) (int, error)
 }
 
@@ -85,7 +85,7 @@ func (repo *repo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (repo *repo) Update(ctx context.Context, id string, firstName *string, lastName *string, email *string, phone *string) error {
+func (repo *repo) Update(ctx context.Context, id string, firstName, lastName, email, phone, twoFStatus, twoFCode *string, twoFActive *bool) error {
 
 	values := make(map[string]interface{})
 
@@ -100,8 +100,21 @@ func (repo *repo) Update(ctx context.Context, id string, firstName *string, last
 	if email != nil {
 		values["email"] = *email
 	}
+
 	if phone != nil {
 		values["phone"] = *phone
+	}
+
+	if twoFStatus != nil {
+		values["two_f_status"] = *twoFStatus
+	}
+
+	if twoFCode != nil {
+		values["two_f_code"] = *twoFCode
+	}
+
+	if twoFActive != nil {
+		values["two_f_active"] = *twoFActive
 	}
 
 	result := repo.db.WithContext(ctx).Model(&domain.User{}).Where("id = ?", id).Updates(values)

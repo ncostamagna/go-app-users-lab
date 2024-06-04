@@ -6,12 +6,9 @@ import (
 	"fmt"
 	"github.com/ncostamagna/axul_auth/auth"
 	"github.com/ncostamagna/go-app-users-lab/internal/domain"
-	"github.com/skip2/go-qrcode"
-	"github.com/twilio/twilio-go"
-	verify "github.com/twilio/twilio-go/rest/verify/v2"
+	"github.com/ncostamagna/go-app-users-lab/pkg/twofa"
 	"golang.org/x/crypto/bcrypt"
 	"log"
-	"os"
 )
 
 type (
@@ -34,19 +31,19 @@ type (
 		Count(ctx context.Context, filters Filters) (int, error)
 	}
 	service struct {
-		log          *log.Logger
-		auth         auth.Auth
-		twilioClient *twilio.RestClient
-		repo         Repository
+		log         *log.Logger
+		auth        auth.Auth
+		twoFaClient twofa.TwoFA
+		repo        Repository
 	}
 )
 
-func NewService(log *log.Logger, auth auth.Auth, twilioClient *twilio.RestClient, repo Repository) Service {
+func NewService(log *log.Logger, auth auth.Auth, twoFaClient twofa.TwoFA, repo Repository) Service {
 	return &service{
-		log:          log,
-		auth:         auth,
-		twilioClient: twilioClient,
-		repo:         repo,
+		log:         log,
+		auth:        auth,
+		twoFaClient: twoFaClient,
+		repo:        repo,
 	}
 }
 
@@ -89,14 +86,14 @@ func (s service) Login(ctx context.Context, username, password string) (*domain.
 
 	l := &domain.Login{
 		Status:    "ok",
-		TwoFactor: users[0].TwoFActive,
+		TwoFactor: users[0].TwoFActive && users[0].TwoFStatus == string(twofa.APPROVED),
 	}
 
 	var errAuth error
-	if users[0].TwoFActive && users[0].TwoFStatus == "approved" {
-		l.TwoFactorHash, errAuth = s.auth.Create(users[0].ID, users[0].Username, users[0].TwoFCode, false, 60)
+	if l.TwoFactor {
+		l.TwoFactorHash, errAuth = s.auth.Create(users[0].ID, users[0].Username, "", false, 60)
 	} else {
-		l.Token, errAuth = s.auth.Create(users[0].ID, users[0].Username, users[0].TwoFCode, true, 600)
+		l.Token, errAuth = s.auth.Create(users[0].ID, users[0].Username, "", true, 600)
 	}
 
 	if errAuth != nil {
@@ -112,64 +109,37 @@ func (s service) Login2FA(ctx context.Context, user *domain.User, code string) (
 		return nil, ErrCodeRequired
 	}
 
-	var l *domain.Login
-	if user.TwoFStatus == "pending" {
-		params := &verify.UpdateFactorParams{}
-		params.SetAuthPayload(code)
-		resp, err := s.twilioClient.VerifyV2.UpdateFactor(os.Getenv("TWILIO_SERVICE_SID"), user.ID, user.TwoFCode, params)
-		if err != nil {
+	if user.TwoFStatus == string(twofa.PENDING) {
+
+		if err := s.twoFaClient.Verify(user.ID, code, user.TwoFCode); err != nil {
 			return nil, err
 		}
 
-		if resp.Status == nil || *resp.Status != "verified" {
-			return nil, errors.New("invaid auth")
-		}
-
-		user.TwoFStatus = "approved"
+		user.TwoFStatus = string(twofa.APPROVED)
 		user.TwoFActive = true
-		token, err := s.auth.Create(user.ID, user.Username, user.TwoFCode, true, 3000)
-		if err != nil {
-			return nil, err
-		}
 
 		if err := s.Update(ctx, user.ID, nil, nil, nil, nil, &user.TwoFStatus, &user.TwoFCode, &user.TwoFActive); err != nil {
 			return nil, err
 		}
 
-		l = &domain.Login{
-			Status:    "ok",
-			TwoFactor: user.TwoFActive,
-			Token:     token,
-		}
-
 	} else {
-		params := &verify.CreateChallengeParams{}
-		params.SetAuthPayload(code)
-		params.SetFactorSid(user.TwoFCode)
 
-		resp, err := s.twilioClient.VerifyV2.CreateChallenge(os.Getenv("TWILIO_SERVICE_SID"), user.ID, params)
-		if err != nil {
-			fmt.Println(err)
-			return nil, err
-		}
-		fmt.Println(*resp.Status)
-		if resp.Status == nil || *resp.Status != "approved" {
-			return nil, errors.New("invaid auth")
-		}
-
-		token, err := s.auth.Create(user.ID, user.Username, user.TwoFCode, true, 3000)
-		if err != nil {
+		if err := s.twoFaClient.Check(user.ID, code, user.TwoFCode); err != nil {
 			return nil, err
 		}
 
-		l = &domain.Login{
-			Status:    "ok",
-			TwoFactor: user.TwoFActive,
-			Token:     token,
-		}
 	}
 
-	return l, nil
+	token, err := s.auth.Create(user.ID, user.Username, "", true, 3000)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.Login{
+		Status:    "ok",
+		TwoFactor: user.TwoFActive,
+		Token:     token,
+	}, nil
 }
 
 func (s service) GetUserByToken(ctx context.Context, token string, checkAuthorized bool) (*domain.User, error) {
@@ -193,37 +163,25 @@ func (s service) GetUserByToken(ctx context.Context, token string, checkAuthoriz
 
 func (s service) Create2FA(ctx context.Context, user *domain.User) error {
 
-	if user.TwoFStatus == "approved" {
-		/*	if user.TwoFStatus == "pending" {
-			generateQR(user.ID, fmt.Sprintf("uri:otpauth://totp/otp-service:UserLab%%20Token%%20Example?secret=%s&issuer=otp-service&algorithm=SHA1&digits=6&period=60", user.TwoFCode))
-			return nil
-		}*/
+	if user.TwoFStatus == string(twofa.APPROVED) {
 		return fmt.Errorf("the 2FA status is %s", user.TwoFStatus)
 	}
-	params := &verify.CreateNewFactorParams{}
-	params.SetFriendlyName("UserLab Token Example")
-	params.SetFactorType("totp")
-
-	resp, err := s.twilioClient.VerifyV2.CreateNewFactor(os.Getenv("TWILIO_SERVICE_SID"), user.ID, params)
+	resp, err := s.twoFaClient.Create(user.ID)
 	if err != nil {
 		return err
 	}
 
-	if resp.Binding == nil {
-		return errors.New("invalid hash")
-	}
-
-	qrSecret := (*resp.Binding).(map[string]interface{})["secret"].(string)
-
-	user.TwoFCode = *resp.Sid
+	user.TwoFCode = resp.Hash
 	user.TwoFActive = true
 	user.TwoFStatus = "pending"
 
 	if err := s.Update(ctx, user.ID, nil, nil, nil, nil, &user.TwoFStatus, &user.TwoFCode, &user.TwoFActive); err != nil {
 		return err
 	}
-	fmt.Printf(os.Getenv("TWILIO_QR"), qrSecret)
-	generateQR(user.ID, fmt.Sprintf(os.Getenv("TWILIO_QR"), qrSecret))
+
+	if err := s.twoFaClient.GenerateQR(user.ID, resp.Url); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -258,15 +216,4 @@ func (s service) Update(ctx context.Context, id string, firstName, lastName, ema
 
 func (s service) Count(ctx context.Context, filters Filters) (int, error) {
 	return s.repo.Count(ctx, filters)
-}
-
-func generateQR(userID, url string) {
-	qrCode, _ := qrcode.New(url, qrcode.Medium)
-	fileName := fmt.Sprintf("./files/%s.png", userID)
-	err := qrCode.WriteFile(256, fileName)
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-	fmt.Println(fmt.Sprintf("QR code generated and saved as %s.png", userID))
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/ncostamagna/go-app-users-lab/internal/user"
 	"github.com/ncostamagna/go-app-users-lab/pkg/bootstrap"
 	"github.com/ncostamagna/go-app-users-lab/pkg/handler"
-	"github.com/twilio/twilio-go"
+	"github.com/ncostamagna/go-app-users-lab/pkg/twofa"
 	"log"
 	"net/http"
 	"os"
@@ -32,12 +32,11 @@ func main() {
 
 	ctx := context.Background()
 	userRepo := user.NewRepo(l, db)
-	a, err := auth.New("12312312")
+	a, err := auth.New(os.Getenv("JWT_KEY"))
 	if err != nil {
-		fmt.Println(err)
 		os.Exit(-1)
 	}
-	userSrv := user.NewService(l, a, twilio.NewRestClient(), userRepo)
+	userSrv := user.NewService(l, a, twofa.New(os.Getenv("TWILIO_SERVICE_SID"), os.Getenv("TWILIO_FRIENDLY_NAME"), os.Getenv("TWILIO_QR")), userRepo)
 	h := handler.NewUserHTTPServer(ctx, user.MakeEndpoints(userSrv, user.Config{LimPageDef: pagLimDef}))
 
 	port := os.Getenv("PORT")

@@ -159,5 +159,9 @@ func applyFilters(tx *gorm.DB, filters Filters) *gorm.DB {
 		tx = tx.Where("lower(last_name) like ?", filters.LastName)
 	}
 
+	if filters.Username != "" {
+		tx = tx.Where("lower(username) = ?", strings.ToLower(filters.Username))
+	}
+
 	return tx
 }
